@@ -124,7 +124,8 @@ if (@ListPlanificados) {
 					my $SF_BonosPromociones         = "";
 					my $SF_Cableoperador_JSON       = "";
 					my $SF_Cablero_Bono_CO          = "";
-					my $SF_ID_Tarificador           = "";		
+					my $SF_ID_Tarificador           = "";
+					my $SF_IMSI                     = "";
 					
 					my $record  = Get_SF_Activo($token_sf,$registro);
 						if (!$record->{result}) {
@@ -287,7 +288,37 @@ if (@ListPlanificados) {
 												}
 											}
 										}
-										$SF_BonosPromociones = Ordenar_Valores_Alfanumericos($SF_BonosPromociones);										
+										$SF_BonosPromociones = Ordenar_Valores_Alfanumericos($SF_BonosPromociones);
+
+										my $record_imsi = Get_SF_AssetIMSI($token_sf,$RootItemId);
+										if (!$record_imsi->{result}) {
+											$SF_IMSI = "[Error.SF.AssetIMSI]";
+										}else{
+											if ($record_imsi->{SF_Response}->{totalSize} eq "0") {
+												$SF_IMSI = "[Error.SIM_OT.NoExiste]";
+											}elsif ($record_imsi->{SF_Response}->{totalSize} >= 1) {
+												my $attr_raw = $record_imsi->{SF_Response}->{records}[0]{'vlocity_cmt__JSONAttribute__c'} // '{}';
+												my $atributos_imsi;
+												eval {
+													$atributos_imsi = decode_json(encode("UTF-8", $attr_raw));
+													1;
+												} or do {
+													$SF_IMSI = "[Error.SIM_OT.JSON]";
+												};
+												if (ref($atributos_imsi) eq 'HASH' && exists $atributos_imsi->{"SIM"}) {
+													foreach my $item (@{ $atributos_imsi->{"SIM"} }) {
+														if ($item->{attributeuniquecode__c} eq 'IMSI') {
+															$SF_IMSI = $item->{attributeRunTimeInfo}{value} // "";
+															$SF_IMSI =~ s/^\s+|\s+$//g;
+															last;
+														}
+													}
+													$SF_IMSI = "[Error.SIM_OT.IMSI_NoEncontrado]" if $SF_IMSI eq "";
+												}else{
+													$SF_IMSI = "[Error.SIM_OT.JSON_Estructura]";
+												}
+											}
+										}
 									}
 
 								if ($totalsize > 1) {
@@ -354,7 +385,7 @@ if (@ListPlanificados) {
 					#UPDATE_Alineamiento_Detalle ($registro,$id_planificado,$Codigo_Cablero,$SF_Residencial,$SF_CIF,$SF_ID_Tarificador,$SF_BonoCompartido,$SF_BonosPromociones);
 					
 					# v2 Creamos el update actual
-					$sql_actual = "UPDATE topercable.alineamiento_planificado_detalle SET co_sf = '$Codigo_Cablero', resi_sf = '$SF_Residencial', cif_sf = '$SF_CIF', tarifa_sf = '$SF_ID_Tarificador', bc_sf = '$SF_BonoCompartido', promo_sf = '$SF_BonosPromociones' WHERE planificado_id = $id_planificado and msisdn = '$registro';";					
+					$sql_actual = "UPDATE topercable.alineamiento_planificado_detalle SET co_sf = '$Codigo_Cablero', resi_sf = '$SF_Residencial', cif_sf = '$SF_CIF', tarifa_sf = '$SF_ID_Tarificador', bc_sf = '$SF_BonoCompartido', promo_sf = '$SF_BonosPromociones', imsi_sf = '$SF_IMSI' WHERE planificado_id = $id_planificado and msisdn = '$registro';";					
 
 					# Acumulamos el update en una array para ejcutarlos en paquetes al llegar al Umbral
 					Batch_SQL_Generar(\$sql_actual, \@sql_batch, $batch_size);

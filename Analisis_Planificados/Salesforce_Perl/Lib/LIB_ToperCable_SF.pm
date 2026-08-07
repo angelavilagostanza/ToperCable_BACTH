@@ -28,7 +28,7 @@ use ConectarDB;
 use llogged;
 
 our @ISA    = qw(Exporter);
-our @EXPORT = qw( Get_Planificados_Pendientes Get_MSISDN_Planificados get_sf_token Get_SF_Activo Get_SF_AssetTarifa Get_SF_AssetBonoCompartido Get_SF_AssetBonoCompartido_BonoDatos Get_SF_AssetPromociones UPDATE_Alineamiento_Detalle UPDATE_Alineamiento_Contador Batch_SQL_Generar Batch_SQL_Ejecutar );
+our @EXPORT = qw( Get_Planificados_Pendientes Get_MSISDN_Planificados get_sf_token Get_SF_Activo Get_SF_AssetTarifa Get_SF_AssetBonoCompartido Get_SF_AssetBonoCompartido_BonoDatos Get_SF_AssetPromociones Get_SF_AssetIMSI UPDATE_Alineamiento_Detalle UPDATE_Alineamiento_Contador Batch_SQL_Generar Batch_SQL_Ejecutar );
 
 use strict;
 use warnings;
@@ -106,7 +106,7 @@ sub Get_MSISDN_Planificados ($) {
 	
 
 	Plogged ($log_file,$modo_ejecucion,0," \t -> $nombre_modulo -> Sacamos los MSISDN pendientes");
-	$sql = "SELECT distinct msisdn FROM alineamiento_planificado_detalle WHERE planificado_id = $planificado_id AND (co_sf='0' OR resi_sf='0' OR cif_sf='0') order by id desc LIMIT 2000;";
+	$sql = "SELECT distinct msisdn FROM alineamiento_planificado_detalle WHERE planificado_id = $planificado_id AND (co_sf='0' OR resi_sf='0' OR cif_sf='0' OR imsi_sf='0') order by id desc LIMIT 2000;";
 	#Plogged ($log_file,$modo_ejecucion,1," \t -> $nombre_modulo -> SQL: ($sql) ");
 	$sthd = $dbhd->prepare($sql);
 	$sthd->execute() or die ("No se pudo ejecutar la consulta. SQL:($sql)  Desc(" . $sthd->errstr . ")");
@@ -626,6 +626,70 @@ sub Batch_SQL_Ejecutar {
 	Plogged ($log_file,$modo_ejecucion,0," ");	
 }
 #---------------------------------------------------------------------------------------------------
+
+
+
+# Get Asset SIM_OT: extrae el IMSI del asset SIM vinculado al RootItem
+sub Get_SF_AssetIMSI {
+    my ($token_sf, $RootItemId) = @_;
+
+    unless ($token_sf) {
+        return { result => 0, SF_Response => "ERROR: token_sf no recibido." };
+    }
+    unless ($RootItemId) {
+        return { result => 0, SF_Response => "ERROR: RootItemId no recibido." };
+    }
+
+    my $nombre_modulo = (caller(0))[3];
+    Plogged($log_file, $modo_ejecucion, 0, "\t -> $nombre_modulo -> Inicio ");
+    Plogged($log_file, $modo_ejecucion, 0, "\t -> $nombre_modulo -> RootItemId: $RootItemId");
+
+    my $base_url = "https://masmovil.my.salesforce.com";
+    my $endpoint = "/services/data/v51.0/query/?q=";
+
+    $RootItemId =~ s/'/\\'/g;
+
+    my $sql = <<"SOQL";
+SELECT id, vlocity_cmt__JSONAttribute__c
+FROM asset
+WHERE vlocity_cmt__RootItemId__c = '$RootItemId'
+AND status != 'Deleted'
+AND Product2.vlocity_cmt__ObjectTypeId__r.Name = 'SIM_OT'
+AND vlocity_cmt__ParentItemId__c != null
+LIMIT 3
+SOQL
+
+    $sql =~ s/\n/ /g;
+    $sql =~ s/ +/ /g;
+    $sql =~ s/ /+/g;
+
+    my $full_url = $base_url . $endpoint . $sql;
+
+    use LWP::UserAgent;
+    use JSON;
+    my $ua = LWP::UserAgent->new;
+    my $response = $ua->get($full_url, Authorization => "Bearer $token_sf");
+
+    unless ($response->is_success) {
+        return { result => 0, SF_Response => "Error HTTP: " . $response->status_line };
+    }
+
+    my $decoded;
+    eval {
+        $decoded = decode_json($response->decoded_content);
+    };
+    if ($@) {
+        return { result => 0, SF_Response => "Error al decodificar JSON: $@" };
+    }
+
+    Plogged($log_file, $modo_ejecucion, 0, "\t -> $nombre_modulo -> TotalSize: $decoded->{totalSize}");
+
+    return {
+        result      => 1,
+        SF_Response => $decoded,
+    };
+}
+#------------------------------------------------------------------
 
 
 
