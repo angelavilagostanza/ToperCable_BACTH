@@ -1,0 +1,2 @@
+Ejecucion de analisis Planificados previamente en ToperCable.
+Lanza URLS de la APP en ASP usando el comando WGET.

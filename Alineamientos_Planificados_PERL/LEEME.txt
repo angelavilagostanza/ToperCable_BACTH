@@ -1,0 +1,2 @@
+Analisis de slos sistemas con PERL en lugar de ASP.
+Este PERL quiere sustituir al codigo ASP para los analisis planificados

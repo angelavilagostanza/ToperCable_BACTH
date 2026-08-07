@@ -1,0 +1,8 @@
+Este Script verifica que la tabla xprv.pv_clientes  se sincroniza correctamente con la tabla nfac.pv_clientes, es decir que esats 2 tablas tienen los mismos clientes
+
+
+BD 200  MySql
+xprv.pv_clientes
+
+BD 45  Sql Server
+nfac.dbo.pv_clientes 

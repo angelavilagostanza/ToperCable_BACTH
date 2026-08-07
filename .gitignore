@@ -1,0 +1,11 @@
+# Directorios de logs generados en ejecucion
+**/LOGS/
+**/*.log
+
+# Ficheros PID temporales
+*.pid
+*.lock
+
+# Archivos temporales del sistema
+Thumbs.db
+Desktop.ini
