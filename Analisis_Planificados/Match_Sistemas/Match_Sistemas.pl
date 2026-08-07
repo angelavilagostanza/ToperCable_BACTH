@@ -1,5 +1,4 @@
 #!C:Perl\bin\perl.exe -w
-#use strict;
 use DBI;
 use Switch;
 use POSIX "strftime";
@@ -9,128 +8,141 @@ use strict;
 use Time::Local;
 use File::Copy;
 use DateTime::Locale;
-use File::Path qw(make_path);
 use Sys::Hostname;
 
-
-# Añadimos nuestras librerias
+# Librerias globales
 use lib 'D:\Intranet\Perl\comun\lib';
+# Libreria local Match
+use lib '.\Lib';
 use GlobalVariables;
 use llogged;
+use LIB_ToperCable_Match;
 
 #**************************************************************************************************************************
-#  Script que lanza el analisis de alneamiento planificado en Topercable
-#  Se ejecuta todos los dias a cada 2 horas
-#
-
+#  Match entre sistemas para alineamiento planificado
+#  Refactorizacion Perl de alineamiento_planificado_run_MatchFinal.asp
+#  Compara datos SF vs Xena vs Inventario vs MSA y calcula RESULTADO por MSISDN
+#  Estados de resultado: OK | ERROR_INV | ERROR_TAR | ERROR_BCO | ERROR_PRO |
+#                        ERROR_CODSF | ERROR_CIF | ERROR_COD | ERROR_AST | ERROR_MSA
 #**************************************************************************************************************************
-#	Cabecera de Script
+
 Script_Cabecera;
 
-
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-#	Email Notificador
+#-------------------------------------------------------------------------------------
 our $email_sistemas;
 our $email_direccion_whs;
+our $email_desarrollo;
 
 my $texto_asunto;
 my $texto_mail;
-my $texto_mail_comercial;
-
-$modo_ejecucion				= 1; # 0= produccion   1=Debugger
-my $dir_principal			= "D:\\Intranet\\Script\\ToperCable\\Analisis_Planificados\\Match_Sistemas\\LOGS\\";
-my $dir_rot 				= strftime("%Y-%m-%d_%H%M%S",localtime(time()));
-my $directorio_log			= $dir_principal . $dir_rot;
-my $archivo_log_proceso 	= $directorio_log . ".log";
-my $archivo_log_proceso_e	= $dir_principal . "Alineamientos_Planificados_Run_" . strftime("%Y-%m-%d_%H.%M.%S",localtime(time())) . "_Lanzador.log";
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
 #-------------------------------------------------------------------------------------
-# Descomentar para DEBUG
-# Esta variable machaca la de GlobalVariables 0:DEBUG  1:PRODUCCION				Tipo mensaje: 0:DEBUG	1:INFO	2:OK	3:ERROR
-$modo_ejecucion = 1;
-if ($modo_ejecucion == 0){
-	$email_sistemas = "angel\.avila\@masmovil.com";;
-	$email_direccion_whs 	= $email_sistemas;
-};
 
+$modo_ejecucion				= 1;	# 0=produccion  1=Debugger
+
+if ($modo_ejecucion == 0) {
+	$email_sistemas		= $email_desarrollo;
+	$email_direccion_whs= $email_desarrollo;
+}
 
 #**************************************************************************************************************************
-#  Empezamos
+# Empezamos
 
-# FICHERO PID. Creamos el fichero PID para evitar solpamiento en ejecuciones
-Plogged ($log_file,$modo_ejecucion,1,"- Bloqueando proceso. Creando fichero PID");
-FileExists($0,0);	# 0:Comprobacion (Inicio)		1:Borrado (Final)
+# FICHERO PID para evitar solapamiento
+Plogged($log_file, $modo_ejecucion, 1, "- Bloqueando proceso. Creando fichero PID");
+FileExists($0, 0);	# 0:Comprobacion (Inicio)   1:Borrado (Final)
 #------------------------------------------------------------------
 
 
-
-Plogged ($log_file,$modo_ejecucion,1,"- Creando directorio LOGS ($directorio_log) para ejecucion WGet");
-eval {
-    make_path($directorio_log, { mode => 0755 });
-};
-	if ($@) {
-		my $error_message = $@;
-		Plogged($log_file, $modo_ejecucion, 1, "ERROR. No se creo directorio ($directorio_log) Fallida: $error_message");
-		my $texto_asunto = "ERROR. La creacion del directorio LOG fue fallida.";
-		my $texto_mail = "<b><font color=red>Error del JOB Alineamientos Planificados Cablemovil</b><br><br>No se pudo crear el directorio de LOGS ($directorio_log).<br><br>Error: $error_message</b></font>";
-		$texto_mail .= "<br><br><font color=black>ToperCable NO puede continuar con el proceso.<br><br><b>.: ToperCable :.<br>Grupo MASORANGE</b></font>";
-		Plogged_Mail($email_sistemas, $log_file, $texto_asunto, $texto_mail);
-		Plogged($log_file, $modo_ejecucion, 3, "ERROR. No se creo directorio ($directorio_log) Fallida: $error_message");
-		exit 1;
-	} else {
-		Plogged($log_file, $modo_ejecucion, 0, "OK. Creacion directorio correcta");
-	}
-Plogged ($log_file,$modo_ejecucion,1," ");
+#------------------------------------------------------------------
+# Obtenemos los planificados pendientes de Match (estado 0, 1 o 2)
+#------------------------------------------------------------------
+Plogged($log_file, $modo_ejecucion, 1, "- Obteniendo Planificados para Match..");
+my @ListPlanificados = Get_Planificados_Match();
+my $num_planificados = scalar @ListPlanificados;
+Plogged($log_file, $modo_ejecucion, 1, "Total Planificados: $num_planificados");
+Plogged($log_file, $modo_ejecucion, 1, " ");
 
 
+#------------------------------------------------------------------
+# Bucle principal: planificado → comprobacion pendientes → match → estado
+#------------------------------------------------------------------
+Plogged($log_file, $modo_ejecucion, 1, "Recorriendo listado de PLANIFICADOS..");
+if (@ListPlanificados) {
 
-Plogged ($log_file,$modo_ejecucion,1,"- Lanzamos CURL de Match entre Sistemas. Ultimo paso de los analisis planificados");
-$salida_system = system("\"C:\\wget\\wget.exe\" --verbose --user=topecable_runsf --password=T0p3rC4bl3 --no-check-certificate --secure-protocol=TLSv1_2 -c -E -P$directorio_log  http://10.27.47.123:84/Alineamiento_planificado/alineamiento_planificado_run_MatchFinal.asp");
-#$salida_system = 0;
-Plogged ($log_file,$modo_ejecucion,1,"\n");
-Plogged ($log_file,$modo_ejecucion,1,"Salida: $salida_system");
-Plogged ($log_file,$modo_ejecucion,1,"\n");
+	foreach my $planificado (@ListPlanificados) {
 
-	#	Comprobamos si la salida del Comando Fue correcta.	-----------------------------------------------
-	Plogged ($log_file,$modo_ejecucion,1,"Comprobamos ejecucion Wget Paso 2..");
-	if ($salida_system == 0 || $salida_system == 2048){
-		Plogged ($log_file,$modo_ejecucion,1,"OK. Wget Match Final correcto. Salida: $salida_system ");
-		
-		$texto_asunto = "OK. MAtch alineamiento planificado se realizo correctamente.";
-		$texto_mail = "<b><font color=green>Confirmacion del JOB que ejecuta Alineamiento Planficado automaticamente. La tarea se realizo correctamente.</b><br><br>Wget se ejecuto correctamente.</b></font>";
-		Plogged_Mail_Externo_ProrityHight ("",$email_direccion_whs,"","",$texto_asunto,$texto_mail);			
-		
-	}else{		
-		Plogged ($log_file,$modo_ejecucion,1,"ERROR. Wget No se ejecuto correctamente. Salida: $salida_system \n\n");
+		my $planificado_id     = $planificado->{id};
+		my $planificado_nombre = $planificado->{nombre};
+		my $planificado_estado = $planificado->{estado};
 
-		$texto_asunto = "ERROR. Alineamiento planificado. La ejecucion de Wget fue fallida.";
-		$texto_mail = "<b><font color=red>ERROR en ejecucion de Alineamiento Planificado Macth Final. La tarea programada se ejecuto con errores o no se ejecuto.</b><br><br>No se pudo ejecutar Wget correctamente. Revisar el log para ver si se lanzo algo o nada..</b></font>";
-		Plogged_Mail ($email_sistemas,$log_file,$texto_asunto,$texto_mail);
-		
-		exit 1;			
-	};	
-	#-------------------------------------------------------------------------------------------------
-Plogged ($log_file,$modo_ejecucion,1," ");
+		Plogged($log_file, $modo_ejecucion, 1, "Planificado: $planificado_id | $planificado_nombre | Estado: $planificado_estado");
+
+		#------------------------------------------------------
+		# Comprobamos si hay datos pendientes de procesar
+		#------------------------------------------------------
+		my $pendiente = Get_Pendiente_Planificacion($planificado_id);
+		Plogged($log_file, $modo_ejecucion, 1, "PendientePlanificacion ($planificado_id): $pendiente");
+
+		my $match_pendiente = 0;
+
+		if ($pendiente == 0) {
+			Plogged($log_file, $modo_ejecucion, 1, "\t -> Match: SI. Ejecutando..");
+
+			#------------------------------------------------------
+			# Ejecutamos el MATCH
+			#------------------------------------------------------
+			my $match_result = Put_Match_Alineamiento($planificado_id);
+
+			if ($match_result == 1) {
+
+				# Verificamos si quedan MSISDN sin resultado
+				$match_pendiente = Get_Match_Pendiente($planificado_id);
+				Plogged($log_file, $modo_ejecucion, 1, "\t -> MatchPendiente ($planificado_id): $match_pendiente");
+
+				if ($match_pendiente == 0) {
+					# Terminado: todos los MSISDN tienen resultado
+					Plogged($log_file, $modo_ejecucion, 2, "\t -> Planificado $planificado_id TERMINADO. Actualizando estado = 3");
+					UPDATE_Match_Estado($planificado_id, 3);
+				} else {
+					# Sigue en match
+					Plogged($log_file, $modo_ejecucion, 1, "\t -> Planificado $planificado_id sigue en Match ($match_pendiente pendientes). Actualizando estado = 2");
+					UPDATE_Match_Estado($planificado_id, 2);
+				}
+			}
+
+		} else {
+			# Hay datos aun sin procesar, devolvemos a estado 1
+			Plogged($log_file, $modo_ejecucion, 1, "\t -> Match: NO, sigue pendiente. Actualizando estado = 1");
+			UPDATE_Match_Estado($planificado_id, 1);
+		}
+
+		#------------------------------------------------------
+		# Contamos los errores y los guardamos (siempre, independientemente del estado)
+		#------------------------------------------------------
+		my $num_errores = Get_NumErrores_Planificado($planificado_id);
+		Plogged($log_file, $modo_ejecucion, 1, "\t -> Errores ($planificado_id): $num_errores");
+		UPDATE_Match_Desalineamiento($planificado_id, $num_errores);
+
+		Plogged($log_file, $modo_ejecucion, 1, " ");
+
+	}	# foreach planificado
+
+}
 
 
+Plogged($log_file, $modo_ejecucion, 1, "\n\n");
+#------------------------------------------------------------------
+# Buscamos errores en LOG para notificar
+Buscar_Error_En_LOG($modo_ejecucion, $log_file, $email_desarrollo, $email_desarrollo);
 
-Plogged ($log_file,$modo_ejecucion,1," ");
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-#	Buscamos errores en LOG para notificar a ROOT
-Buscar_Error_En_LOG($modo_ejecucion,$log_file,$email_desarrollo,$email_desarrollo);
+# FICHERO PID. Liberamos ejecucion
+FileExists($0, 1);	# 0:Comprobacion (Inicio)   1:Borrado (Final)
 
-#	FICHERO PID. Borramos el fichero PID para liberar la ejecucion.
-FileExists($0,1);	# 0:Comprobacion (Inicio)		1:Borrado (Final)
+# Purgamos logs
+Script_Purgado_Logs(3);
+Script_Purgado_Logs_Directorios(3);
 
-#	Purgamos los LOG
-Script_Purgado_Logs(2);
-Script_Purgado_Logs_Directorios(2);
-
-#	Pie del Script
+# Pie del script
 Script_Pie;
 
-# Salimos con OK
 exit 0;
