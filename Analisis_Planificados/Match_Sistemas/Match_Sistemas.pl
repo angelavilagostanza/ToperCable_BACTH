@@ -119,9 +119,9 @@ if (@ListPlanificados) {
 		#------------------------------------------------------
 		# Contamos los errores y los guardamos (siempre, independientemente del estado)
 		#------------------------------------------------------
-		my $num_errores = Get_NumErrores_Planificado($planificado_id);
-		Plogged($log_file, $modo_ejecucion, 1, "\t -> Errores ($planificado_id): $num_errores");
-		UPDATE_Match_Desalineamiento($planificado_id, $num_errores);
+		my $num_desalineamientos = Get_NumDesalineamientos_Planificado($planificado_id);
+		Plogged($log_file, $modo_ejecucion, 1, "\t -> Desalineamientos ($planificado_id): $num_desalineamientos");
+		UPDATE_Match_Desalineamiento($planificado_id, $num_desalineamientos);
 
 		Plogged($log_file, $modo_ejecucion, 1, " ");
 
