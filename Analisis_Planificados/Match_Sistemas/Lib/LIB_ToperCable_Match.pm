@@ -192,13 +192,6 @@ sub Put_Match_Alineamiento {
             $RESULTADO = "ERROR_INV";
         }
 
-        # ERROR_IMSI: solo si imsi_msa esta informado; alguno de los otros difiere
-        if ($MSA eq "CONNECTED") {
-            if ($IMSI_SF ne $IMSI_MSA || $IMSI_XENA ne $IMSI_MSA) {
-                $RESULTADO = "ERROR_IMSI";
-            }
-        }
-
         # ERROR_TAR / ERROR_BCO / ERROR_PRO (exclusivos entre si)
         if ($TARIFA_XENA ne $TARIFA_SF) {
             $RESULTADO = "ERROR_TAR";
@@ -211,6 +204,11 @@ sub Put_Match_Alineamiento {
         # ERROR_CODSF: primeros 6 digitos de RESI_SF deben coincidir con CO_SF
         if ($MSA eq "CONNECTED" && substr($RESI_SF, 0, 6) ne $CO_SF) {
             $RESULTADO = "ERROR_CODSF";
+        }
+
+        # ERROR_IMSI: fuente de verdad = imsi_msa; basta que uno de los otros difiera
+        if ($IMSI_MSA ne '' && ($IMSI_SF ne $IMSI_MSA || $IMSI_XENA ne $IMSI_MSA)) {
+            $RESULTADO = "ERROR_IMSI";
         }
 
         # ERROR_CIF
