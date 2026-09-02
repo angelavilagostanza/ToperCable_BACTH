@@ -134,6 +134,10 @@ sub Get_MSA_MSISDN_Data {
 
     unless ($response->is_success) {
         my $http_code = $response->code;
+        if ($http_code == 400) {
+            Plogged($log_file, $modo_ejecucion, 1, "\t -> $nombre_modulo -> NO EXISTE el MSISDN en MSA: $msisdn");
+            return { result => 0, msg => "[MSA.NoExiste]" };
+        }
         Plogged($log_file, $modo_ejecucion, 1, "\t -> $nombre_modulo -> ERROR HTTP $http_code para MSISDN: $msisdn");
         return { result => 0, msg => "[Error.MSA.HTTP.$http_code]" };
     }

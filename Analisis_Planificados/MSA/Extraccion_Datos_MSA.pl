@@ -108,7 +108,8 @@ if (@ListPlanificados) {
 				my $msa_data = Get_MSA_MSISDN_Data($registro);
 
 				if (!$msa_data->{result}) {
-					Plogged($log_file, $modo_ejecucion, 1, "- ERROR Get_MSA_MSISDN_Data ($registro): $msa_data->{msg}");
+					my $prefijo = ($msa_data->{msg} eq '[MSA.NoExiste]') ? 'NO_EXISTE' : 'ERROR';
+					Plogged($log_file, $modo_ejecucion, 1, "- $prefijo Get_MSA_MSISDN_Data ($registro): $msa_data->{msg}");
 					$MSA_IMSI = $msa_data->{msg};
 
 				} else {
