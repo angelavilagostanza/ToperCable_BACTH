@@ -29,7 +29,7 @@ use ConectarDB;
 use llogged;
 
 our @ISA    = qw(Exporter);
-our @EXPORT = qw( get_sf_token Get_SF_Altas ADD_Alineamiento ADD_MSISDN_To_Alineamiento);
+our @EXPORT = qw( get_sf_token Get_SF_Altas Get_Xena_Altas ADD_Alineamiento ADD_MSISDN_To_Alineamiento UPDATE_Num_Msisdn_Alineamiento);
 
 use strict;
 use warnings;
@@ -135,6 +135,40 @@ sub ADD_MSISDN_To_Alineamiento {
 
 
 
+sub UPDATE_Num_Msisdn_Alineamiento {
+	#	Funcion que recalcula num_msisdn en base a los MSISDN realmente insertados (Salesforce + Xena) en el detalle
+	my ($alineamiento_id) = @_;
+
+	my $nombre_modulo = (caller(0))[3];
+	Plogged ($log_file,$modo_ejecucion,0,"\t -> $nombre_modulo -> alineamiento_id: $alineamiento_id ");
+
+	unless ($alineamiento_id) {
+		return { result => 0, msg => "ERROR: alineamiento_id no recibido." };
+	}
+
+	#	Declaramos las variables
+	my ($dbhd,$sthd,$sql);
+
+	#	Conectamos la BBDD ------------------------------------------------------------------------------------------------------------------------------------------------
+	$dbhd = ConectarDB->connect_topercable();
+		if (not defined $dbhd) {
+			Plogged ($log_file,$modo_ejecucion,1," \t -> $nombre_modulo -> ERROR CATASTROFICO. No se pudo conectar la BBDD ToperCable. \n\nDescripcion del error: ($DBI::errstr)\n\n");	die "\n\nERROR DE CONEXION BBDD: ($DBI::errstr) \n";
+		};	$sthd = $dbhd->prepare("use topercable;");	$sthd->execute() or die ("No se pudo ejecutar la consulta. Desc(" . $sthd->errstr . ")");
+	#---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+	Plogged ($log_file,$modo_ejecucion,0,"\t\t -> $nombre_modulo -> Recalculando num_msisdn.. ");
+	$sql = "UPDATE topercable.alineamiento_planificado SET num_msisdn = (SELECT COUNT(*) FROM topercable.alineamiento_planificado_detalle WHERE planificado_id = $alineamiento_id) WHERE id = $alineamiento_id;";
+	$sthd = $dbhd->prepare($sql);
+	$sthd->execute() or die ("No se pudo ejecutar la consulta. SQL:($sql)  Desc(" . $sthd->errstr . ")");
+
+	Plogged ($log_file,$modo_ejecucion,0,"\t -> $nombre_modulo -> Fin");
+	Plogged ($log_file,$modo_ejecucion,0," ");
+
+	return 1;
+};	# FIN Function
+
+
+
 
 sub Get_SF_Altas {
     #my $token_sf = get_sf_token();
@@ -203,6 +237,44 @@ sub Get_SF_Altas {
         SF_Registros => \@unicos
     };
 
+}
+
+
+
+sub Get_Xena_Altas {
+	#	Funcion que obtiene los MSISDN activados ayer directamente desde Xena (mvno.pv_msisdn)
+	my $nombre_modulo = (caller(0))[3];
+	Plogged($log_file, $modo_ejecucion, 0, "\t -> $nombre_modulo -> Inicio ");
+
+	my ($dbhd, $sthd, $sql);
+
+	#	Conectamos la BBDD Xena mvno ------------------------------------------------------------------------------------------------------------------------------------------------
+	$dbhd = ConectarDB->connect_xena_mvno();
+	if (not defined $dbhd) {
+		Plogged($log_file, $modo_ejecucion, 1, "\t -> $nombre_modulo -> ERROR. No se pudo conectar la BBDD Xena mvno. \n\nDescripcion del error: ($DBI::errstr)\n\n");
+		return { result => 0, Xena_Response => "ERROR CONEXION Xena mvno: $DBI::errstr" };
+	}
+	#---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+	$sql = "SELECT distinct msisdn FROM mvno.pv_msisdn WHERE Fecha_activacion = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') LIMIT 25000";
+	Plogged($log_file, $modo_ejecucion, 0, "\t -> $nombre_modulo -> sql: $sql ");
+	$sthd = $dbhd->prepare($sql);
+	unless ($sthd->execute()) {
+		Plogged($log_file, $modo_ejecucion, 1, "\t -> $nombre_modulo -> ERROR SQL. ($sql) Desc(" . $sthd->errstr . ")");
+		return { result => 0, Xena_Response => "Error SQL pv_msisdn: " . $sthd->errstr };
+	}
+
+	my @Xena_Registros;
+	while (defined(my $msisdn = $sthd->fetchrow_array())) {
+		push(@Xena_Registros, $msisdn);
+	}
+
+	# Devolvemos la lista de MSISDN de Xena
+	Plogged($log_file, $modo_ejecucion, 1, "\t -> $nombre_modulo -> Total msisdn Xena: " . scalar(@Xena_Registros));
+	return {
+		result => scalar(@Xena_Registros) > 0 ? 1 : 0,
+		Xena_Registros => \@Xena_Registros
+	};
 }
 
 1;      # FIN DEL MODULO

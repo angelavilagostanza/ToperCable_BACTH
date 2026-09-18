@@ -90,6 +90,36 @@ if ($resultados->{result}) {
 			ADD_MSISDN_To_Alineamiento($registro->{MM_Numero_de_Telefono__c},$planificacion_id);
 		}		
     }
+
+
+	Plogged ($log_file,$modo_ejecucion,1," ");
+	Plogged ($log_file,$modo_ejecucion,1,"- Obteniendo Altas de Xena..");
+	my $resultados_xena = Get_Xena_Altas();
+	my $numero_de_registros_xena = $resultados_xena->{result} ? scalar(@{ $resultados_xena->{Xena_Registros} }) : 0;
+	Plogged ($log_file,$modo_ejecucion,1," ");
+	Plogged ($log_file,$modo_ejecucion,1,"- Total MSISDN Xena: $numero_de_registros_xena ");
+
+	Plogged ($log_file,$modo_ejecucion,1,"- Recorriendo resultado Xena..");
+	if ($resultados_xena->{result}) {
+
+		# Procesamos los MSISDN de Xena sobre la MISMA cabecera creada para Salesforce
+		foreach my $msisdn_xena (@{ $resultados_xena->{Xena_Registros} }) {
+
+			if ($planificacion_id > 5){
+				Plogged ($log_file,$modo_ejecucion,0,"- Añadiendo MSISDN Xena $msisdn_xena a la planificiacion $planificacion_id ");
+				ADD_MSISDN_To_Alineamiento($msisdn_xena,$planificacion_id);
+			}
+		}
+	} else {
+		Plogged ($log_file,$modo_ejecucion,3,"- Error al obtener datos de Xena: $resultados_xena->{Xena_Response} ");
+	}
+
+	if ($planificacion_id > 5){
+		Plogged ($log_file,$modo_ejecucion,1,"- Recalculando num_msisdn final (Salesforce + Xena) de la planificiacion $planificacion_id ");
+		UPDATE_Num_Msisdn_Alineamiento($planificacion_id);
+	}
+
+
 } else {
 	Plogged ($log_file,$modo_ejecucion,3,"- Error al obtener datos de Salesforce: $resultados->{SF_Response} ");
 }
